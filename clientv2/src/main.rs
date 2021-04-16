@@ -144,7 +144,7 @@ async fn add_reviews_in_session(client: &Client) -> Result<()> {
                 .await?
                 .unwrap();
 
-            // TODO(tacogips) Is the push operations above supposed to be invisible from another session yet?
+            // TODO(tacogips) Assertion error occures here. Is the push operations above supposed to be not visible from another session?
             assert_eq!(0, found.reviews.len());
             println!("\nupdated book:{:?}", found);
 
