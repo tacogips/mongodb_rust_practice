@@ -1,5 +1,5 @@
 
-## How to connect the mongodb with mongo client
+## Before running
 
 ### 1.Add below  to your /etc/hosts
 ```
@@ -13,8 +13,7 @@
 docker-compose up -d
 ```
 
-
-#### 3. Connect  with mongo chell
+## How to connect the mongodb with mongo client
 ```sh
 mongo "mongodb://mongo1:30001,mongo2:30002,mongo3:30003/test_db?replicaSet=my-replica-set"
 ```
