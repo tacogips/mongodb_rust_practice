@@ -1,1 +1,6 @@
 data/*
+
+
+# Added by cargo
+
+/target

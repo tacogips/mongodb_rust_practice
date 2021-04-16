@@ -10,7 +10,7 @@
 
 #### 2. Connect  with mongo chell
 ```sh
-mongo "mongodb://mongo1:30001,mongo2:30002,mongo3:30003/test-db?replicaSet=my-replica-set"
+mongo "mongodb://mongo1:30001,mongo2:30002,mongo3:30003/test_db?replicaSet=my-replica-set"
 ```
 
 # Thanks
