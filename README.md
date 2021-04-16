@@ -8,7 +8,13 @@
 127.0.0.1	mongo3
 ```
 
-#### 2. Connect  with mongo chell
+#### 2. Run docker-compose
+```sh
+docker-compose up -d
+```
+
+
+#### 3. Connect  with mongo chell
 ```sh
 mongo "mongodb://mongo1:30001,mongo2:30002,mongo3:30003/test_db?replicaSet=my-replica-set"
 ```
