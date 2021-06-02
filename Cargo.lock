@@ -16,6 +16,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
+name = "ahash"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43bb833f0bf979d8475d38fbf09ed3b8a55e1885fe93ad3f93239fc6a4f17b98"
+dependencies = [
+ "getrandom 0.2.2",
+ "once_cell",
+ "version_check",
+]
+
+[[package]]
 name = "anyhow"
 version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -124,6 +135,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "bson"
+version = "2.0.0-beta.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82b538f08f421ed777d19b7dadf2c0a8ee36e4a1571691fcb4b8fb760825abd2"
+dependencies = [
+ "ahash",
+ "base64 0.13.0",
+ "chrono",
+ "hex",
+ "indexmap",
+ "lazy_static",
+ "rand 0.7.3",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -199,7 +228,7 @@ name = "clientv2"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "mongodb 2.0.0-alpha.1",
+ "mongodb 2.0.0-beta.1",
  "serde",
  "tokio 1.5.0",
 ]
@@ -1019,7 +1048,7 @@ dependencies = [
  "async-trait",
  "base64 0.11.0",
  "bitflags",
- "bson",
+ "bson 1.2.2",
  "chrono",
  "derivative",
  "err-derive",
@@ -1048,7 +1077,7 @@ dependencies = [
  "tokio-rustls 0.13.1",
  "trust-dns-proto 0.19.7",
  "trust-dns-resolver 0.19.7",
- "typed-builder",
+ "typed-builder 0.4.1",
  "uuid",
  "version_check",
  "webpki",
@@ -1057,17 +1086,20 @@ dependencies = [
 
 [[package]]
 name = "mongodb"
-version = "2.0.0-alpha.1"
+version = "2.0.0-beta.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1264c64d5469f05c0201b939f971138bd385e7eb87eacdfd79f0c18b9eae7940"
+checksum = "5914bd2dfa3a20660f95a8713ed7ae971ac00ed3b3a668051dff055c92b57c62"
 dependencies = [
  "async-trait",
  "base64 0.13.0",
  "bitflags",
- "bson",
+ "bson 2.0.0-beta.1",
  "chrono",
  "derivative",
- "futures",
+ "futures-core",
+ "futures-executor",
+ "futures-io",
+ "futures-util",
  "hex",
  "hmac 0.10.1",
  "lazy_static",
@@ -1093,7 +1125,7 @@ dependencies = [
  "tokio-util 0.6.6",
  "trust-dns-proto 0.20.1",
  "trust-dns-resolver 0.20.1",
- "typed-builder",
+ "typed-builder 0.9.0",
  "uuid",
  "version_check",
  "webpki",
@@ -2142,6 +2174,17 @@ name = "typed-builder"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfc955f27acc7a547f328f52f4a5a568986a31efec2fc6de865279f3995787b9"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "typed-builder"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "345426c7406aa355b60c5007c79a2d1f5b605540072795222f17f6443e6a9c6f"
 dependencies = [
  "proc-macro2",
  "quote",

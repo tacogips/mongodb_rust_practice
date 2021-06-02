@@ -1,7 +1,7 @@
 use anyhow::Result;
 use mongodb::{
     bson::{doc, Bson, Document},
-    options::{ClientOptions, DropCollectionOptions, StreamAddress, UpdateModifications},
+    options::{ClientOptions, DropCollectionOptions, ServerAddress, UpdateModifications},
     Client, Collection, Database,
 };
 
@@ -175,20 +175,20 @@ async fn drop_colls(client: &Client) -> Result<()> {
 async fn main() {
     let opts = ClientOptions::builder()
         .hosts(vec![
-            StreamAddress {
-                hostname: "mongo1".to_string(),
+            ServerAddress::Tcp {
+                host: "mongo1".to_string(),
                 port: Some(30001),
             },
-            StreamAddress {
-                hostname: "mongo2".to_string(),
+            ServerAddress::Tcp {
+                host: "mongo2".to_string(),
                 port: Some(30002),
             },
-            StreamAddress {
-                hostname: "mongo3".to_string(),
+            ServerAddress::Tcp {
+                host: "mongo3".to_string(),
                 port: Some(30003),
             },
         ])
-        .repl_set_name(Some("my-replica-set".to_string()))
+        .repl_set_name("my-replica-set".to_string())
         .build();
 
     let client = Client::with_options(opts).unwrap();
