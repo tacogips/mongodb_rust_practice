@@ -104,7 +104,7 @@ async fn find_users(client: &Client) -> Result<()> {
     let user_coll = db.collection::<User>("users");
     let found = user_coll.find_one(Some(doc! {"id":"user_1"}), None).await?;
     let found = found.unwrap();
-    assert_eq!(s("user_1"), found.id);
+    assert_eq!(found.id, s("user_1"));
     println!("\nfound user:{:?}", found);
     Ok(())
 }
@@ -169,7 +169,7 @@ async fn add_reviews_in_session(client: &Client) -> Result<()> {
                 .await?
                 .unwrap();
 
-            assert_eq!(0, found.reviews.len());
+            assert_eq!(found.reviews.len(), 0);
             println!("\nupdated book in another session:{:?}", found);
 
             let found = user_coll
@@ -181,7 +181,7 @@ async fn add_reviews_in_session(client: &Client) -> Result<()> {
                 .await?
                 .unwrap();
 
-            assert_eq!(0, found.reviewed_book_ids.len());
+            assert_eq!(found.reviewed_book_ids.len(), 0);
             println!("\nupdated user:{:?}", found);
         }
 
@@ -210,7 +210,7 @@ async fn add_reviews_in_session(client: &Client) -> Result<()> {
             .await?
             .unwrap();
 
-        assert_eq!(1, found.reviews.len());
+        assert_eq!(found.reviews.len(), 1);
         println!("\nupdated book in another session:{:?}", found);
 
         let found = user_coll
@@ -222,7 +222,7 @@ async fn add_reviews_in_session(client: &Client) -> Result<()> {
             .await?
             .unwrap();
 
-        assert_eq!(1, found.reviewed_book_ids.len());
+        assert_eq!(found.reviewed_book_ids.len(), 1);
         println!("\nupdated user:{:?}", found);
     }
 
@@ -239,6 +239,60 @@ async fn commit_tx(session: &mut ClientSession) -> TxResult<()> {
             }
         }
         break;
+    }
+
+    Ok(())
+}
+
+async fn abort_tx(client: &Client) -> Result<()> {
+    let db = client.database("test_db");
+    let book_coll = db.collection::<Book>("books");
+
+    let book_id = s("book_fake");
+    let mut session = client.start_session(None).await?;
+
+    let tx_options = TransactionOptions::builder()
+        .read_concern(ReadConcern::majority())
+        .write_concern(WriteConcern::builder().w(Acknowledgment::Majority).build())
+        .build();
+    session.start_transaction(tx_options).await?;
+
+    book_coll
+        .insert_one_with_session(
+            Book {
+                id: book_id.clone(),
+                name: s("ABC book"),
+                reviews: vec![],
+            },
+            None,
+            &mut session,
+        )
+        .await?;
+
+    {
+        let mut another_session = client.start_session(None).await?;
+        let found_before_tx = book_coll
+            .find_one_with_session(
+                Some(doc! {"id":book_id.clone()}),
+                None,
+                &mut another_session,
+            )
+            .await?;
+        assert!(found_before_tx.is_none());
+    }
+
+    session.abort_transaction().await?;
+
+    {
+        let mut another_session = client.start_session(None).await?;
+        let found_before_tx = book_coll
+            .find_one_with_session(
+                Some(doc! {"id":book_id.clone()}),
+                None,
+                &mut another_session,
+            )
+            .await?;
+        assert!(found_before_tx.is_none());
     }
 
     Ok(())
@@ -279,5 +333,8 @@ async fn main() {
     create_books(&client).await.unwrap();
     find_users(&client).await.unwrap();
     add_reviews_in_session(&client).await.unwrap();
+
+    abort_tx(&client).await.unwrap();
+
     drop_colls(&client).await.unwrap();
 }
