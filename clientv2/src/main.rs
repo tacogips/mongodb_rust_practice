@@ -1,8 +1,12 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use mongodb::{
     bson::{doc, Bson, Document},
-    options::{ClientOptions, DropCollectionOptions, ServerAddress, UpdateModifications},
-    Client, Collection, Database,
+    error::{Result as TxResult, TRANSIENT_TRANSACTION_ERROR, UNKNOWN_TRANSACTION_COMMIT_RESULT},
+    options::{
+        Acknowledgment, ClientOptions, DropCollectionOptions, ReadConcern, ServerAddress,
+        TransactionOptions, UpdateModifications, WriteConcern,
+    },
+    Client, ClientSession, Collection, Database,
 };
 
 use serde::{
@@ -38,6 +42,9 @@ fn s(s: &str) -> String {
 async fn create_users(client: &Client) -> Result<()> {
     let db = client.database("test_db");
     let user_coll = db.collection::<User>("users");
+    if let Err(e) = user_coll.drop(None).await {
+        println!("drop user coll error {:?}", e);
+    }
     user_coll
         .insert_many(
             vec![
@@ -73,6 +80,11 @@ async fn create_users(client: &Client) -> Result<()> {
 async fn create_books(client: &Client) -> Result<()> {
     let db = client.database("test_db");
     let book_coll = db.collection::<Book>("books");
+
+    if let Err(e) = book_coll.drop(None).await {
+        println!("drop book coll error {:?}", e);
+    }
+
     book_coll
         .insert_one(
             Book {
@@ -105,57 +117,128 @@ async fn add_reviews_in_session(client: &Client) -> Result<()> {
     let user_id = s("user_2");
     let book_id = s("book_1");
     let mut session = client.start_session(None).await?;
-    {
-        // TODO(tacogips) try to find a doc using indices.
-        book_coll
-            .update_one_with_session(
-                doc! {"id" : book_id.clone()},
-                UpdateModifications::Document(doc! {
-                    "$push":{
-                        "reviews":{
-                            "user_id": user_id.clone(),
-                            "text": s("Good reading")
-                        },
-                    }
-                }),
-                None,
-                &mut session,
-            )
-            .await?;
 
-        user_coll
-            .update_one_with_session(
-                doc! {"id" : user_id.clone()},
-                UpdateModifications::Document(doc! {
-                    "$push":{
-                        "reviewed_book_ids":book_id.clone(),
-                    }
-                }),
-                None,
-                &mut session,
-            )
-            .await?;
+    let tx_options = TransactionOptions::builder()
+        .read_concern(ReadConcern::majority())
+        .write_concern(WriteConcern::builder().w(Acknowledgment::Majority).build())
+        .build();
+    session.start_transaction(tx_options).await?;
+
+    loop {
+        {
+            // TODO(tacogips) try to find a doc using indices.
+            book_coll
+                .update_one_with_session(
+                    doc! {"id" : book_id.clone()},
+                    UpdateModifications::Document(doc! {
+                        "$push":{
+                            "reviews":{
+                                "user_id": user_id.clone(),
+                                "text": s("Good reading")
+                            },
+                        }
+                    }),
+                    None,
+                    &mut session,
+                )
+                .await?;
+
+            user_coll
+                .update_one_with_session(
+                    doc! {"id" : user_id.clone()},
+                    UpdateModifications::Document(doc! {
+                        "$push":{
+                            "reviewed_book_ids":book_id.clone(),
+                        }
+                    }),
+                    None,
+                    &mut session,
+                )
+                .await?;
+        }
 
         {
-            // another session
+            // read from other session before commit
             let mut another_session = client.start_session(None).await?;
             let found = book_coll
-                .find_one_with_session(Some(doc! {"id":book_id}), None, &mut another_session)
+                .find_one_with_session(
+                    Some(doc! {"id":book_id.clone()}),
+                    None,
+                    &mut another_session,
+                )
                 .await?
                 .unwrap();
 
-            // TODO(tacogips) Assertion error occures here. Is the push operations above supposed to be not visible from another session?
             assert_eq!(0, found.reviews.len());
-            println!("\nupdated book:{:?}", found);
+            println!("\nupdated book in another session:{:?}", found);
 
             let found = user_coll
-                .find_one_with_session(Some(doc! {"id":user_id}), None, &mut another_session)
+                .find_one_with_session(
+                    Some(doc! {"id":user_id.clone()}),
+                    None,
+                    &mut another_session,
+                )
                 .await?
                 .unwrap();
 
             assert_eq!(0, found.reviewed_book_ids.len());
             println!("\nupdated user:{:?}", found);
         }
+
+        match commit_tx(&mut session).await {
+            Ok(_) => break,
+            Err(e) => {
+                if e.contains_label(TRANSIENT_TRANSACTION_ERROR) {
+                    // entire transaction can be retried
+                    continue;
+                } else {
+                    return Err(anyhow!("{}", e));
+                }
+            }
+        }
+    }
+
+    {
+        // read from other session after commit
+        let mut another_session = client.start_session(None).await?;
+        let found = book_coll
+            .find_one_with_session(
+                Some(doc! {"id":book_id.clone()}),
+                None,
+                &mut another_session,
+            )
+            .await?
+            .unwrap();
+
+        assert_eq!(1, found.reviews.len());
+        println!("\nupdated book in another session:{:?}", found);
+
+        let found = user_coll
+            .find_one_with_session(
+                Some(doc! {"id":user_id.clone()}),
+                None,
+                &mut another_session,
+            )
+            .await?
+            .unwrap();
+
+        assert_eq!(1, found.reviewed_book_ids.len());
+        println!("\nupdated user:{:?}", found);
+    }
+
+    Ok(())
+}
+
+async fn commit_tx(session: &mut ClientSession) -> TxResult<()> {
+    loop {
+        let result = session.commit_transaction().await;
+        if let Err(ref error) = result {
+            // rertry untiry the write concern will sarifified
+            if error.contains_label(UNKNOWN_TRANSACTION_COMMIT_RESULT) {
+                continue;
+            }
+        }
+        break;
     }
 
     Ok(())
