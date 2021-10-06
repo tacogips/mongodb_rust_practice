@@ -189,7 +189,8 @@ async fn add_reviews_in_session(client: &Client) -> Result<()> {
             Ok(_) => break,
             Err(e) => {
                 if e.contains_label(TRANSIENT_TRANSACTION_ERROR) {
-                    // entire transaction can be retried
+                    // TRANSIENT_TRANSACTION_ERROR  implies entire transaction can be retried
+                    // see https://www.mongodb.com/blog/post/how-to-select--for-update-inside-mongodb-transactions for more detail
                     continue;
                 } else {
                     return Err(anyhow!("{}", e));

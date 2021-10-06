@@ -237,6 +237,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "clientv2_lock"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "mongodb 2.0.0",
+ "serde",
+ "tokio 1.5.0",
+]
+
+[[package]]
 name = "cpuid-bool"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,15 @@
+[package]
+name = "clientv2_lock"
+version = "0.1.0"
+authors = ["tacogips <me@tacogips.me>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = "1.5.0"
+serde = "1.0.125"
+anyhow = "1.0.40"
+
+[dependencies.mongodb]
+version = "2.0.0"
