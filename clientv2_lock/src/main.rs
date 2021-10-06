@@ -33,15 +33,24 @@ async fn conflict_updating(client: &Client) -> Result<()> {
     //let mut session = client.start_session(None).await?;
 
     let cloned_client = client.clone();
-    let jh = tokio::task::spawn(async move {
+    let jh: tokio::task::JoinHandle<Result<()>> = tokio::task::spawn(async move {
+        let db = cloned_client.database(DB_NAME);
+        let mut session = cloned_client.start_session(None).await?;
+        let tx_options = TransactionOptions::builder()
+            .read_concern(ReadConcern::majority())
+            .write_concern(WriteConcern::builder().w(Acknowledgment::Majority).build())
+            .build();
+        session.start_transaction(tx_options).await?;
+
         println!("{:?}", "start session 1");
-        let mut session = update_users_name(&cloned_client, "user_1", "update_in_session")
-            .await
-            .unwrap();
+        let result = update_users_name(&db, &mut session, "user_1", "update_in_session1").await;
+
+        println!("session 1 result {:?}", result);
+
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         commit_tx(&mut session).await.unwrap();
 
-        let db = cloned_client.database("test_db");
+        let db = cloned_client.database(DB_NAME);
         let user_coll = db.collection::<User>("users");
         let found = user_coll
             .find_one_with_session(Some(doc! {"id":"user_1".clone()}), None, &mut session)
@@ -49,44 +58,38 @@ async fn conflict_updating(client: &Client) -> Result<()> {
             .unwrap()
             .unwrap();
         println!("found in session 1:{:?}", found);
+        Ok(())
     });
 
-    //{
-    //    //update locked objects
-    //    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    //    println!("{:?}", "start session 2");
-    //    let result = update_users_name(client, "user_1", "must_not_be_changed").await;
+    {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let db = client.database(DB_NAME);
+        let mut session = client.start_session(None).await.unwrap();
+        let tx_options = TransactionOptions::builder()
+            .read_concern(ReadConcern::majority())
+            .write_concern(WriteConcern::builder().w(Acknowledgment::Majority).build())
+            .build();
+        session.start_transaction(tx_options).await.unwrap();
 
-    //    println!("result  = {:?}", result);
-    //    let mut session = result?;
+        println!("{:?}", "start session 2");
+        let result = update_users_name(&db, &mut session, "user_1", "update_in_session2").await;
 
-    //    let db = client.database("test_db");
-    //    let user_coll = db.collection::<User>("users");
-    //    let found = user_coll
-    //        .find_one_with_session(Some(doc! {"id":"user_1".clone()}), None, &mut session)
-    //        .await?
-    //        .unwrap();
-    //    println!("found in session 2{:?}", found);
+        assert!(result.is_err());
+        println!("write conflict error :{:?}", result.err());
+    }
 
-    //    commit_tx(&mut session).await.unwrap();
-    //}
-
-    jh.await?;
+    jh.await??;
 
     Ok(())
 }
 
-async fn update_users_name(client: &Client, user_id: &str, name: &str) -> Result<ClientSession> {
-    let db = client.database(DB_NAME);
+async fn update_users_name(
+    db: &Database,
+    session: &mut ClientSession,
+    user_id: &str,
+    name: &str,
+) -> Result<()> {
     let user_coll = db.collection::<User>("users");
-
-    let mut session = client.start_session(None).await?;
-
-    let tx_options = TransactionOptions::builder()
-        .read_concern(ReadConcern::majority())
-        .write_concern(WriteConcern::builder().w(Acknowledgment::Majority).build())
-        .build();
-    session.start_transaction(tx_options).await?;
 
     {
         user_coll
@@ -94,16 +97,17 @@ async fn update_users_name(client: &Client, user_id: &str, name: &str) -> Result
                 doc! {"id" : user_id.clone()},
                 UpdateModifications::Document(doc! {
                     "$set":{
+
                         "name": name,
                     }
                 }),
                 None,
-                &mut session,
+                session,
             )
             .await?;
     }
 
-    Ok(session)
+    Ok(())
 }
 
 async fn commit_tx(session: &mut ClientSession) -> TxResult<()> {
@@ -122,7 +126,7 @@ async fn commit_tx(session: &mut ClientSession) -> TxResult<()> {
 }
 
 async fn drop_colls(client: &Client) -> Result<()> {
-    let db = client.database("test_db");
+    let db = client.database(DB_NAME);
     let user_coll = db.collection::<User>("users");
     user_coll.drop(None).await?;
 
@@ -130,7 +134,7 @@ async fn drop_colls(client: &Client) -> Result<()> {
 }
 
 async fn create_users(client: &Client) -> Result<()> {
-    let db = client.database("test_db");
+    let db = client.database(DB_NAME);
     let user_coll = db.collection::<User>("users");
     if let Err(e) = user_coll.drop(None).await {
         println!("drop user coll error {:?}", e);
