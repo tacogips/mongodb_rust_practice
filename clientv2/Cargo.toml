@@ -10,6 +10,7 @@ edition = "2018"
 tokio = "1.5.0"
 serde = "1.0.125"
 anyhow = "1.0.40"
+futures = "0.3.17"
 
 [dependencies.mongodb]
 version = "2.0.0"
