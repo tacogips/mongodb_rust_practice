@@ -3,7 +3,7 @@ version: "3.8"
 services:
   mongo1:
     image: mongo:4.2
-    container_name: mongo1
+    container_name: mongo1_rust
     command: ["--replSet", "my-replica-set", "--bind_ip_all", "--port", "30001"]
     volumes:
       - ./data/mongo-1:/data/db
@@ -16,7 +16,7 @@ services:
 
   mongo2:
     image: mongo:4.2
-    container_name: mongo2
+    container_name: mongo2_rust
     command: ["--replSet", "my-replica-set", "--bind_ip_all", "--port", "30002"]
     volumes:
       - ./data/mongo-2:/data/db
@@ -25,7 +25,7 @@ services:
 
   mongo3:
     image: mongo:4.2
-    container_name: mongo3
+    container_name: mongo3_rust
     command: ["--replSet", "my-replica-set", "--bind_ip_all", "--port", "30003"]
     volumes:
       - ./data/mongo-3:/data/db

@@ -14,21 +14,25 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 
-#[derive(Deserialize, Serialize, Debug)]
+use futures::stream::TryStreamExt;
+
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
 struct User {
     id: String,
     name: String,
     reviewed_book_ids: Vec<String>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
 struct Book {
     id: String,
     name: String,
     reviews: Vec<Review>,
+    authors: Vec<String>,
+    supervisors: Vec<String>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
 struct Review {
     user_id: String,
     text: String,
@@ -91,6 +95,8 @@ async fn create_books(client: &Client) -> Result<()> {
                 id: s("book_1"),
                 name: s("The Hitchhiker's Guide to Somewhere"),
                 reviews: vec![],
+                authors: vec![],
+                supervisors: vec![],
             },
             None,
         )
@@ -264,6 +270,8 @@ async fn abort_tx(client: &Client) -> Result<()> {
                 id: book_id.clone(),
                 name: s("ABC book"),
                 reviews: vec![],
+                authors: vec![],
+                supervisors: vec![],
             },
             None,
             &mut session,
@@ -309,20 +317,109 @@ async fn drop_colls(client: &Client) -> Result<()> {
     Ok(())
 }
 
+async fn misc(client: &Client) -> Result<()> {
+    let db = client.database("test_db");
+    let book_coll = db.collection::<Book>("books");
+
+    if let Err(e) = book_coll.drop(None).await {
+        println!("drop book coll error {:?}", e);
+    }
+
+    book_coll
+        .insert_one(
+            Book {
+                id: s("book_with_authors"),
+                name: s("some book"),
+                reviews: vec![],
+                authors: vec![s("author_1"), s("author_2")],
+                supervisors: vec![],
+            },
+            None,
+        )
+        .await?;
+
+    // search by id
+    {
+        let found = book_coll
+            .find_one(doc! {"id":"book_with_authors"}, None)
+            .await;
+        assert!(found.is_ok());
+        let found = found.unwrap();
+        assert_eq!(
+            found,
+            Some(Book {
+                id: s("book_with_authors"),
+                name: s("some book"),
+                reviews: vec![],
+                authors: vec![s("author_1"), s("author_2")],
+                supervisors: vec![],
+            }),
+        )
+    }
+
+    // search by $in
+    {
+        let found = book_coll
+            .find_one(doc! {"authors" :{"$in":["author_1"]}}, None)
+            .await;
+        assert!(found.is_ok());
+        let found = found.unwrap();
+        assert_eq!(
+            found,
+            Some(Book {
+                id: s("book_with_authors"),
+                name: s("some book"),
+                reviews: vec![],
+                authors: vec![s("author_1"), s("author_2")],
+                supervisors: vec![],
+            }),
+        )
+    }
+
+    // search by $in not found
+    {
+        let found = book_coll
+            .find_one(doc! {"authors" :{"$in":["imaginary_author_1"]}}, None)
+            .await;
+        assert!(found.is_ok());
+        let found = found.unwrap();
+        assert_eq!(found, None)
+    }
+
+    // search by $in with empty vec
+    {
+        let found = book_coll.find_one(doc! {"authors" :{"$in":[]}}, None).await;
+        assert!(found.is_ok());
+        let found = found.unwrap();
+        assert_eq!(found, None,)
+    }
+
+    // search by $in with empty vec
+    {
+        let found = book_coll.find(doc! {"authors" :{"$in":[]}}, None).await;
+        assert!(found.is_ok());
+        let found = found.unwrap();
+        let found: Vec<Book> = found.try_collect().await?;
+        assert!(found.is_empty())
+    }
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
     let opts = ClientOptions::builder()
         .hosts(vec![
             ServerAddress::Tcp {
-                host: "mongo1".to_string(),
+                host: "localhost".to_string(),
                 port: Some(30001),
             },
             ServerAddress::Tcp {
-                host: "mongo2".to_string(),
+                host: "localhost".to_string(),
                 port: Some(30002),
             },
             ServerAddress::Tcp {
-                host: "mongo3".to_string(),
+                host: "localhost".to_string(),
                 port: Some(30003),
             },
         ])
@@ -336,6 +433,7 @@ async fn main() {
     add_reviews_in_session(&client).await.unwrap();
 
     abort_tx(&client).await.unwrap();
+    misc(&client).await.unwrap();
 
     drop_colls(&client).await.unwrap();
 }
