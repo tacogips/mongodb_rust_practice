@@ -3,8 +3,8 @@ use mongodb::{
     bson::{doc, Bson, Document},
     error::{Result as TxResult, TRANSIENT_TRANSACTION_ERROR, UNKNOWN_TRANSACTION_COMMIT_RESULT},
     options::{
-        Acknowledgment, ClientOptions, DropCollectionOptions, ReadConcern, ServerAddress,
-        TransactionOptions, UpdateModifications, WriteConcern,
+        Acknowledgment, ClientOptions, DropCollectionOptions, FindOneAndUpdateOptions, ReadConcern,
+        ReturnDocument, ServerAddress, TransactionOptions, UpdateModifications, WriteConcern,
     },
     Client, ClientSession, Collection, Database,
 };
@@ -401,6 +401,104 @@ async fn misc(client: &Client) -> Result<()> {
         let found = found.unwrap();
         let found: Vec<Book> = found.try_collect().await?;
         assert!(found.is_empty())
+    }
+
+    // update pull which not exists
+    {
+        let mut option = FindOneAndUpdateOptions::default();
+        option.return_document = Some(ReturnDocument::After);
+        let found = book_coll
+            .find_one_and_update(
+                doc! {"id": s("book_with_authors")},
+                doc! {"$pull" :{"authors":"no_such_author"}},
+                Some(option),
+            )
+            .await;
+        assert!(found.is_ok());
+        let found = found.unwrap();
+        assert_eq!(
+            found,
+            Some(Book {
+                id: s("book_with_authors"),
+                name: s("some book"),
+                reviews: vec![],
+                authors: vec![s("author_1"), s("author_2")],
+                supervisors: vec![],
+            }),
+        )
+    }
+
+    {
+        let mut option = FindOneAndUpdateOptions::default();
+        option.return_document = Some(ReturnDocument::After);
+        let found = book_coll
+            .find_one_and_update(
+                doc! {"id": s("book_with_authors")},
+                doc! {"$addToSet" :{"authors":"author_3"}},
+                Some(option.clone()),
+            )
+            .await;
+        assert!(found.is_ok());
+        let found = found.unwrap();
+        assert_eq!(
+            found,
+            Some(Book {
+                id: s("book_with_authors"),
+                name: s("some book"),
+                reviews: vec![],
+                authors: vec![s("author_1"), s("author_2"), s("author_3")],
+                supervisors: vec![],
+            }),
+        );
+
+        // add again
+        let found = book_coll
+            .find_one_and_update(
+                doc! {"id": s("book_with_authors")},
+                doc! {"$addToSet" :{"authors":"author_3"}},
+                Some(option.clone()),
+            )
+            .await;
+        assert!(found.is_ok());
+        let found = found.unwrap();
+        assert_eq!(
+            found,
+            Some(Book {
+                id: s("book_with_authors"),
+                name: s("some book"),
+                reviews: vec![],
+                authors: vec![s("author_1"), s("author_2"), s("author_3")],
+                supervisors: vec![],
+            }),
+        )
+    }
+
+    // update pull which exists
+    {
+        let mut option = FindOneAndUpdateOptions::default();
+        option.return_document = Some(ReturnDocument::After);
+        let found = book_coll
+            .find_one_and_update(
+                doc! {"id": s("book_with_authors")},
+                doc! {"$pull" :{
+                    "authors":"author_3",
+                    "supervisors":"no_such_supervisor",
+                }},
+                Some(option),
+            )
+            .await;
+        assert!(found.is_ok());
+        let found = found.unwrap();
+        assert_eq!(
+            found,
+            Some(Book {
+                id: s("book_with_authors"),
+                name: s("some book"),
+                reviews: vec![],
+                authors: vec![s("author_1"), s("author_2")],
+                supervisors: vec![],
+            }),
+        )
     }
 
     Ok(())
