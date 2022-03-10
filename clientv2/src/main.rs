@@ -21,6 +21,7 @@ use futures::stream::TryStreamExt;
 struct IndexTest {
     id: String,
     name: String,
+    opt: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
@@ -131,6 +132,22 @@ async fn indexes(client: &Client) -> Result<()> {
         .await?;
 
     println!("==== index created == {:?}", result);
+
+    let result = coll
+        .create_index(
+            IndexModel::builder()
+                .keys(doc! {
+                    "name":1,
+                    "opt":1
+                })
+                .options(IndexOptions::builder().unique(true).build())
+                .build(),
+            None,
+        )
+        .await?;
+
+    println!("==== index created == {:?}", result);
+
     //duplicated index
     let indices = coll.list_indexes(None).await?;
     let indices: Vec<IndexModel> = indices.try_collect().await?;
@@ -142,6 +159,7 @@ async fn indexes(client: &Client) -> Result<()> {
         IndexTest {
             id: s("test_11"),
             name: s("aaaa"),
+            opt: s("sss"),
         },
         None,
     )
@@ -152,11 +170,36 @@ async fn indexes(client: &Client) -> Result<()> {
             IndexTest {
                 id: s("test_11"),
                 name: s("aaaa"),
+                opt: s("bbb"),
             },
             None,
         )
         .await;
     assert!(result.is_err());
+
+    let result = coll
+        .insert_one(
+            IndexTest {
+                id: s("test_22"),
+                name: s("aaaa"),
+                opt: s("sss"),
+            },
+            None,
+        )
+        .await;
+    assert!(result.is_err());
+
+    let result = coll
+        .insert_one(
+            IndexTest {
+                id: s("test_22"),
+                name: s("aaaa"),
+                opt: s("bbbb"),
+            },
+            None,
+        )
+        .await;
+    assert!(result.is_ok());
 
     Ok(())
 }
