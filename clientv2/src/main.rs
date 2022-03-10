@@ -3,10 +3,11 @@ use mongodb::{
     bson::{doc, Bson, Document},
     error::{Result as TxResult, TRANSIENT_TRANSACTION_ERROR, UNKNOWN_TRANSACTION_COMMIT_RESULT},
     options::{
-        Acknowledgment, ClientOptions, DropCollectionOptions, FindOneAndUpdateOptions, ReadConcern,
-        ReturnDocument, ServerAddress, TransactionOptions, UpdateModifications, WriteConcern,
+        Acknowledgment, ClientOptions, DropCollectionOptions, FindOneAndUpdateOptions,
+        IndexOptions, ReadConcern, ReturnDocument, ServerAddress, TransactionOptions,
+        UpdateModifications, WriteConcern,
     },
-    Client, ClientSession, Collection, Database,
+    Client, ClientSession, Collection, Database, IndexModel,
 };
 
 use serde::{
@@ -15,6 +16,12 @@ use serde::{
 };
 
 use futures::stream::TryStreamExt;
+
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
+struct IndexTest {
+    id: String,
+    name: String,
+}
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
 struct User {
@@ -101,6 +108,55 @@ async fn create_books(client: &Client) -> Result<()> {
             None,
         )
         .await?;
+
+    Ok(())
+}
+
+async fn indexes(client: &Client) -> Result<()> {
+    let db = client.database("test_db");
+    let coll = db.collection::<IndexTest>("index_test");
+
+    coll.drop(None).await.unwrap();
+
+    let result = coll
+        .create_index(
+            IndexModel::builder()
+                .keys(doc! {
+                    "id":1
+                })
+                .options(IndexOptions::builder().unique(true).build())
+                .build(),
+            None,
+        )
+        .await?;
+
+    println!("==== index created == {:?}", result);
+    //duplicated index
+    let indices = coll.list_indexes(None).await?;
+    let indices: Vec<IndexModel> = indices.try_collect().await?;
+    for each in indices {
+        println!("----- {:?} ", each);
+    }
+
+    coll.insert_one(
+        IndexTest {
+            id: s("test_11"),
+            name: s("aaaa"),
+        },
+        None,
+    )
+    .await?;
+
+    let result = coll
+        .insert_one(
+            IndexTest {
+                id: s("test_11"),
+                name: s("aaaa"),
+            },
+            None,
+        )
+        .await;
+    assert!(result.is_err());
 
     Ok(())
 }
@@ -504,8 +560,7 @@ async fn misc(client: &Client) -> Result<()> {
     Ok(())
 }
 
-#[tokio::main]
-async fn main() {
+async fn client_builder() -> Client {
     let opts = ClientOptions::builder()
         .hosts(vec![
             ServerAddress::Tcp {
@@ -525,8 +580,18 @@ async fn main() {
         .build();
 
     let client = Client::with_options(opts).unwrap();
+    client
+}
+
+#[tokio::main]
+async fn main() {
+    let client = client_builder().await;
+
+    indexes(&client).await.unwrap();
+
     create_users(&client).await.unwrap();
     create_books(&client).await.unwrap();
+
     find_users(&client).await.unwrap();
     add_reviews_in_session(&client).await.unwrap();
 
