@@ -1147,6 +1147,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
+name = "optimistic_lock"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "mongodb 2.0.0",
+ "serde",
+ "tokio 1.5.0",
+]
+
+[[package]]
 name = "os_info"
 version = "3.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,2 +1,2 @@
 [workspace]
-members = ["clientv2","clientv1","clientv2_lock"]
+members = ["clientv2","clientv1","clientv2_lock","optimistic_lock"]
