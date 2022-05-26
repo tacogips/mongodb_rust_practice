@@ -113,6 +113,26 @@ async fn create_books(client: &Client) -> Result<()> {
     Ok(())
 }
 
+async fn update_books(client: &Client) -> Result<()> {
+    let db = client.database("test_db");
+    let book_coll = db.collection::<Book>("books");
+
+    book_coll
+        .update_one(
+            doc! {"id":"book_1"},
+            doc! {"$set":{"name":"The Hitchhiker's Guide to Somewhere"}},
+            None,
+        )
+        .await?;
+
+    // no error returns
+    book_coll
+        .update_one(doc! {"id":"****"}, doc! {"$set":{"name":"xxxxx"}}, None)
+        .await?;
+
+    Ok(())
+}
+
 async fn indexes(client: &Client) -> Result<()> {
     let db = client.database("test_db");
     let coll = db.collection::<IndexTest>("index_test");
@@ -634,6 +654,7 @@ async fn main() {
 
     create_users(&client).await.unwrap();
     create_books(&client).await.unwrap();
+    update_books(&client).await.unwrap();
 
     find_users(&client).await.unwrap();
     add_reviews_in_session(&client).await.unwrap();
