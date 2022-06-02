@@ -92,7 +92,7 @@ async fn update_users_name(
     let user_coll = db.collection::<User>("users");
 
     {
-        user_coll
+        let result = user_coll
             .update_one_with_session(
                 doc! {"id" : user_id.clone()},
                 UpdateModifications::Document(doc! {
@@ -104,7 +104,17 @@ async fn update_users_name(
                 None,
                 session,
             )
-            .await?;
+            .await;
+
+        if let Some(err) = result.as_ref().err() {
+            match err.kind.as_ref() {
+                mongodb::error::ErrorKind::Command(command_error) => {
+                    println!("--- command error : {:?}", command_error)
+                }
+                other_kind => println!("--- {:?}, {:?}", other_kind, err),
+            }
+        }
+        result?;
     }
 
     Ok(())

@@ -6,6 +6,7 @@ use mongodb::{
         Acknowledgment, ClientOptions, DropCollectionOptions, ReadConcern, ServerAddress,
         TransactionOptions, UpdateModifications, WriteConcern,
     },
+    results::UpdateResult,
     Client, ClientSession, Collection, Database,
 };
 use tokio;
@@ -74,10 +75,46 @@ async fn conflict_updating(client: &Client) -> Result<()> {
 
         println!("{:?}", "start session 2");
 
+        let book_coll = db.collection::<Book>(COLL_NAME);
+        let found = book_coll
+            .find_one_with_session(Some(doc! {"id":"book_1".clone()}), None, &mut session)
+            .await
+            .unwrap()
+            .unwrap();
+        println!("found in session 2 before update:{:?}", found);
+
         let result = update_users_name(&db, &mut session, "book_1", "update_in_session2", 1).await;
 
         assert!(result.is_err());
         println!("write conflict error :{:?}", result.err());
+    }
+
+    {
+        tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+        let db = client.database(DB_NAME);
+        let mut session = client.start_session(None).await.unwrap();
+        let tx_options = TransactionOptions::builder()
+            .read_concern(ReadConcern::majority())
+            .write_concern(WriteConcern::builder().w(Acknowledgment::Majority).build())
+            .build();
+        session.start_transaction(tx_options).await.unwrap();
+
+        println!("{:?}", "start session 3");
+
+        let book_coll = db.collection::<Book>(COLL_NAME);
+        let found = book_coll
+            .find_one_with_session(Some(doc! {"id":"book_1".clone()}), None, &mut session)
+            .await
+            .unwrap()
+            .unwrap();
+        println!("found in session 3 before update:{:?}", found);
+
+        let result = update_users_name(&db, &mut session, "book_1", "update_in_session3", 1)
+            .await
+            .unwrap();
+
+        assert_eq!(result.matched_count, 0);
+        assert_eq!(result.modified_count, 0);
     }
 
     jh.await??;
@@ -91,45 +128,29 @@ async fn update_users_name(
     book_id: &str,
     name: &str,
     version: i64,
-) -> Result<()> {
+) -> Result<UpdateResult> {
     let book_coll = db.collection::<Book>(COLL_NAME);
 
-    {
-        book_coll
-            .update_one_with_session(
-                doc! {"$and":{
-                    "id" : book_id.clone(),
-                    "version":version}
+    let result = book_coll
+        .update_one_with_session(
+            doc! {"$and":[
+                {"id" : book_id.clone()},
+                {"version":version}
+            ]},
+            UpdateModifications::Document(doc! {
+                "$set":{
+                    "name": name,
                 },
-                UpdateModifications::Document(doc! {
-                    "$set":{
-                        "name": name,
-                    }
-                }),
-                None,
-                session,
-            )
-            .await?;
-    }
+                "$inc":{
+                    "version": 1,
+                }
+            }),
+            None,
+            session,
+        )
+        .await?;
 
-    Ok(())
-}
-
-async fn get_book_by_id_in_session(
-    db: &Database,
-    session: &mut ClientSession,
-    book_id: &str,
-    name: &str,
-) -> Result<()> {
-    let book_coll = db.collection::<Book>(COLL_NAME);
-
-    {
-        book_coll
-            .find_with_session(doc! {"id" : book_id.clone() }, None, session)
-            .await?;
-    }
-
-    Ok(())
+    Ok(result)
 }
 
 async fn commit_tx(session: &mut ClientSession) -> TxResult<()> {
